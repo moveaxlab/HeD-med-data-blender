@@ -1,0 +1,2 @@
+from .timeSeries_classification import ResNetECGClassifier
+from .image_classification import ResNetMRIClassifier
