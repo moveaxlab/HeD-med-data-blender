@@ -10,21 +10,19 @@ Il framework può lavorare in modalità centralizzata, oppure essere utilizzato 
 Questa versione del progetto è focalizzata sulla sperimentazione con immagini MRI e segnali ECG.
 In particolare:
 
-Il dataset utilizzato per il training delle immagini MRI è il dataset pubblico OASIS, disponibile su Kaggle: OASIS dataset
+* Il dataset utilizzato per il training delle immagini MRI è il dataset pubblico OASIS, disponibile su Kaggle: OASIS dataset
 
-Il dataset utilizzato per il training dei segnali ECG segue la struttura del Heartbeat Dataset, disponibile su Kaggle: Heartbeat Dataset - Kaggle
+* Il dataset utilizzato per il training dei segnali ECG segue la struttura del Heartbeat Dataset, disponibile su Kaggle: Heartbeat Dataset - Kaggle
 
-I moduli di caricamento e pre-processing dei dati sono progettati specificamente per questi due dataset.
-L'utilizzo di dataset con strutture differenti richiede lo sviluppo di ulteriori moduli di data loading dedicati.
-Pertanto, il framework in questa versione è verticalizzato sui due casi d'uso scelti per la sperimentazione del progetto.
+I moduli di caricamento e pre-processing dei dati sono progettati specificamente per questi due dataset. Pertanto, il framework in questa versione è verticalizzato sui due casi d'uso scelti per la sperimentazione del progetto. L'utilizzo di dataset con strutture differenti può essere ottenuto integrando degli ulteriori moduli di data loading sviluppati ad-hoc, grazie alla struttura modulare del progetto.
 
 Il repository fornisce tutto il necessario per riprodurre l’intero ciclo sperimentale su entrambi i dataset:
 
-Addestramento dei modelli
+* Addestramento dei modelli
 
-Generazione dei dati sintetici
+* Generazione dei dati sintetici
 
-Costruzione automatica di un report di valutazione
+* Costruzione automatica di un report di valutazione
 
 Tutte queste funzionalità sono disponibili sia in modalità centralizzata, sia in modalità distribuita (Federated Learning).
 
