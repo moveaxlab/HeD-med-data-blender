@@ -320,11 +320,11 @@ def server(
         model.load_weights_from_path(weights_path)
 
     # Initial weights distribution
-    """
+
     send_weights_to_clients(
         host, send_port, model.generator_model, model.discriminator_model, num_clients
     )
-    """
+
 
     for j in range(num_rounds):
         print(f"\n STARTING ROUND {j}")

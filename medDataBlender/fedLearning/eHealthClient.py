@@ -208,11 +208,11 @@ def train_over_runs(
     discriminator = model.discriminator_model.to(device)
 
     # Initial weights from server
-    # with create_socket_and_connect(host, send_port) as client_socket:
-    # weights = receive_weights_from_server(client_socket)
+    with create_socket_and_connect(host, send_port) as client_socket:
+        weights = receive_weights_from_server(client_socket)
 
-    # generator.load_state_dict(weights["generator_weights"])
-    # discriminator.load_state_dict(weights["discriminator_weights"])
+    generator.load_state_dict(weights["generator_weights"])
+    discriminator.load_state_dict(weights["discriminator_weights"])
 
     # Start federated learning rounds
     for round_num in range(NUM_ROUNDS):
@@ -220,7 +220,7 @@ def train_over_runs(
 
         print(f"start training Client {client_id}")
         # Train locally (to be implemented)
-        # model.train_algorithm(train_loader)
+        model.train_algorithm(train_loader)
 
         # Send updated weights
         send_weights_to_server(host, receive_port, client_id, generator, discriminator)
