@@ -93,6 +93,10 @@ def define_model_and_loader(args):
             checkpoint_epoch=args.checkpoint_epoch,
             base_dir=args.base_dir,
             use_s3=args.is_s3,
+            s3_region_name=s3_region_name,
+            s3_access_key_id=s3_access_key_id,
+            s3_secret_access_key=s3_secret_access_key,
+            s3_endpoint_url=s3_endpoint_url,
         )
     else:  # ECG
         model = TTSGan(
@@ -108,6 +112,10 @@ def define_model_and_loader(args):
             attn_drop_rate=args.attn_drop_rate,
             base_dir=args.base_dir,
             use_s3=args.is_s3,
+            s3_region_name=s3_region_name,
+            s3_access_key_id=s3_access_key_id,
+            s3_secret_access_key=s3_secret_access_key,
+            s3_endpoint_url=s3_endpoint_url,
         )
 
     model.build()
@@ -264,3 +272,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

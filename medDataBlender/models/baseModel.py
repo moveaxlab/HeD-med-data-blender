@@ -55,12 +55,12 @@ class BaseModel(ABC):
         self.g_scheduler = None
 
         if self.base_dir is not None:
-            self.create_directory(self.base_dir)
             if self.use_s3:
                 self.s3_endpoint_url = s3_endpoint_url
-                self.s3_region_name = (s3_region_name,)
-                self.s3_access_key_id = (s3_access_key_id,)
-                self.s3_secret_access_key = (s3_secret_access_key,)
+                self.s3_region_name = s3_region_name
+                self.s3_access_key_id = s3_access_key_id
+                self.s3_secret_access_key = s3_secret_access_key
+
                 self.s3_client = boto3.client(
                     "s3",
                     aws_access_key_id=self.s3_access_key_id,
@@ -68,6 +68,8 @@ class BaseModel(ABC):
                     region_name=self.s3_region_name,
                     endpoint_url=self.s3_endpoint_url,
                 )
+            self.create_directory(self.base_dir)
+
 
     def create_directory(self, path: str, is_dir: bool = True) -> None:
         """
@@ -88,13 +90,7 @@ class BaseModel(ABC):
             if is_dir and not key.endswith("/"):
                 key += "/"
 
-            s3 = boto3.client(
-                "s3",
-                aws_access_key_id=self.s3_access_key_id,
-                aws_secret_access_key=self.s3_secret_access_key,
-                region_name=self.s3_region_name,
-                endpoint_url=self.s3_endpoint_url,
-            )
+            s3 = self.s3_client
 
             try:
                 s3.put_object(Bucket=bucket, Key=key)
@@ -152,13 +148,7 @@ class BaseModel(ABC):
             bucket = parsed.netloc
             prefix = parsed.path.lstrip("/")
 
-            s3 = boto3.client(
-                "s3",
-                aws_access_key_id=self.s3_access_key_id,
-                aws_secret_access_key=self.s3_secret_access_key,
-                region_name=self.s3_region_name,
-                endpoint_url=self.s3_endpoint_url,
-            )
+            s3 = self.s3_client
 
             print(f"Scaricamento da S3: bucket={bucket}, prefix={prefix}")
 
@@ -281,3 +271,4 @@ class BaseModel(ABC):
         save_samples: bool = True,
     ) -> torch.Tensor:
         pass
+
