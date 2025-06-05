@@ -48,6 +48,10 @@ class Acgan(BaseModel):
         checkpoint_epoch=50,
         base_dir="saved_models_brain_MRI",
         use_s3=False,
+        s3_region_name=None,
+        s3_endpoint_url=None,
+        s3_access_key_id=None,
+        s3_secret_access_key=None
     ):
         """
         Initializes the GAN model with the provided parameters.
@@ -67,7 +71,8 @@ class Acgan(BaseModel):
         """
 
         super().__init__(
-            epochs, n_classes, base_dir, checkpoint_epoch, weight_decay, use_s3
+            epochs=epochs, n_classes=n_classes, base_dir=base_dir, checkpoint_epoch=checkpoint_epoch, weight_decay=weight_decay, use_s3=use_s3,
+            s3_region_name=s3_region_name, s3_endpoint_url=s3_endpoint_url, s3_access_key_id=s3_access_key_id, s3_secret_access_key=s3_secret_access_key
         )
 
         # Store hyperparameters and configuration
@@ -630,3 +635,4 @@ class Acgan(BaseModel):
             print(f"{generated_samples}/{num_samples} images generated and saved.")
 
         print(f"All {num_samples} samples have been generated and saved.")
+

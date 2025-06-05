@@ -81,6 +81,10 @@ class TTSGan(BaseModel):
         lr_deacy: bool = False,
         base_dir: str = "saved_models_ecg_PTB",
         use_s3=False,
+        s3_region_name=None,
+        s3_endpoint_url=None,
+        s3_access_key_id=None,
+        s3_secret_access_key=None
     ):
         """
         Initializes the TTSGan model with specified parameters.
@@ -110,8 +114,10 @@ class TTSGan(BaseModel):
             base_dir (str): Directory to save model checkpoints.
 
         """
+
         super().__init__(
-            epochs, n_classes, base_dir, checkpoint_epoch, weight_decay, use_s3
+            epochs=epochs, n_classes=n_classes, base_dir=base_dir, checkpoint_epoch=checkpoint_epoch, weight_decay=weight_decay, use_s3=use_s3,
+            s3_region_name=s3_region_name, s3_endpoint_url=s3_endpoint_url, s3_access_key_id=s3_access_key_id, s3_secret_access_key=s3_secret_access_key
         )
 
         self.lr_deacy = lr_deacy
@@ -725,3 +731,4 @@ class TTSGan(BaseModel):
             print(f"{generated_samples}/{num_samples} ECG signals generated and saved.")
 
         print(f"All {num_samples} samples have been generated and saved.")
+

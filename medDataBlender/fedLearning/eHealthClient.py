@@ -210,7 +210,7 @@ def train_over_runs(
         print(f"Client {client_id} - Round {round_num} started.")
 
         # Train locally (to be implemented)
-        # model.train_algorithm(train_loader)
+        model.train_algorithm(train_loader)
 
         # Send updated weights
         with create_socket_and_connect(host, receive_port) as client_socket_send:
