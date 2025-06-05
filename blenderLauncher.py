@@ -1,6 +1,7 @@
 import argparse
 import sys
 import torch
+from torch import classes
 
 from medDataBlender.fedLearning import train_over_runs, server
 from medDataBlender.models import Acgan, TTSGan
@@ -89,7 +90,7 @@ def define_model_and_loader(args):
             latent_space=args.latent_dim,
             image_shape=[args.channels, *args.image_shape],
             kernel_size=5,
-            n_classes=len(label_percentage) if label_percentage else 0,
+            n_classes=len(label_percentage) if label_percentage else len(classes),
             checkpoint_epoch=args.checkpoint_epoch,
             base_dir=args.base_dir,
             use_s3=args.is_s3,
@@ -102,7 +103,7 @@ def define_model_and_loader(args):
         model = TTSGan(
             seq_len=args.seq_len,
             channels=args.channels,
-            n_classes=len(label_percentage) if label_percentage else 0,
+            n_classes=len(label_percentage) if label_percentage else len(classes),
             latent_dim=args.latent_dim,
             data_embed_dim=args.data_embed_dim,
             label_embed_dim=args.label_embed_dim,
