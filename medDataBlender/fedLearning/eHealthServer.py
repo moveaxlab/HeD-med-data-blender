@@ -4,6 +4,8 @@ import torch
 import threading
 import lz4.frame  # Fast compression
 import logging
+import queue
+
 from typing import Type
 
 from medDataBlender.models.evaluator import SyntheticDataEvaluator
@@ -106,83 +108,93 @@ def send_weights_to_clients(
 def receive_weights_from_client(
     connection: socket.socket,
     received_weights: dict,
+    lock: threading.Lock,
 ) -> None:
     """
-    Receives model weights from a single client.
+    Riceve i pesi del modello da un singolo client.
 
     Args:
-        connection (socket.socket): Client socket connection.
-        received_weights (dict): Shared dictionary to store weights.
+        connection (socket.socket): Connessione socket del client.
+        received_weights (dict): Dizionario condiviso per memorizzare i pesi.
+        lock (threading.Lock): Lock per l'accesso thread-safe al dizionario.
 
     Returns:
         None
     """
     try:
-        data_size = int.from_bytes(connection.recv(8), "big")
-        logging.info(
-            f"Expecting {data_size} bytes from client {connection.getpeername()}..."
-        )
+        data_size_bytes = connection.recv(8)
+        if not data_size_bytes:
+            raise ConnectionError("Nessun dato ricevuto per la dimensione del payload.")
+        data_size = int.from_bytes(data_size_bytes, "big")
+        logging.info(f"Attesa di {data_size} byte da {connection.getpeername()}...")
 
         data = b""
-        received_bytes = 0
-        while received_bytes < data_size:
-            packet = connection.recv(min(CHUNK_SIZE, data_size - received_bytes))
+        while len(data) < data_size:
+            packet = connection.recv(min(CHUNK_SIZE, data_size - len(data)))
             if not packet:
-                raise ConnectionError("Connection lost during data reception")
+                raise ConnectionError("Connessione persa durante la ricezione dei dati.")
             data += packet
-            received_bytes += len(packet)
 
         decompressed_data = lz4.frame.decompress(data)
         received_data = pickle.loads(decompressed_data)
 
         client_id = received_data["client_id"]
         client_weights = received_data["weights"]
-        received_weights[client_id] = client_weights
 
-        logging.info(f"Weights received successfully from client {client_id}.")
+        with lock:
+            received_weights[client_id] = client_weights
+
+        logging.info(f"Pesi ricevuti con successo dal client {client_id}.")
 
     except Exception as e:
-        logging.error(f"Error receiving weights: {e}")
+        logging.error(f"Errore nella ricezione dei pesi: {e}")
 
     finally:
         connection.close()
 
 
+def accept_connections(server_socket, num_clients, connection_queue):
+    for _ in range(num_clients):
+        conn, addr = server_socket.accept()
+        logging.info(f"Connessione accettata da {addr}")
+        connection_queue.put(conn)
+
+
+
 def receive_weights_from_clients(
     host: str,
     receive_port: int,
-    num_clients: int,
+    num_clients: int
 ) -> dict:
-    """
-    Receives model weights from multiple clients.
-
-    Args:
-        host (str): Host address of the server.
-        receive_port (int): Port used to receive weights.
-        num_clients (int): Number of clients expected.
-
-    Returns:
-        dict: Dictionary of received weights, keyed by client ID.
-    """
     received_weights = {}
+    connection_queue = queue.Queue()
+    lock = threading.Lock()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((host, receive_port))
         server_socket.listen()
-        logging.info(f"Server listening to receive weights on port {receive_port}...")
+        logging.info(f"Server in ascolto sulla porta {receive_port}...")
 
+        # Thread per accettare connessioni
+        accept_thread = threading.Thread(
+            target=accept_connections,
+            args=(server_socket, num_clients, connection_queue),
+        )
+        accept_thread.start()
+
+        # Thread per ricevere i pesi
         threads = []
         for _ in range(num_clients):
-            connection, address = server_socket.accept()
-            logging.info(f"Connection received from {address}")
+            conn = connection_queue.get()
             thread = threading.Thread(
                 target=receive_weights_from_client,
-                args=(connection, received_weights),
+                args=(conn, received_weights, lock),
             )
             thread.start()
             threads.append(thread)
 
+        accept_thread.join()
         for thread in threads:
             thread.join()
 
@@ -361,3 +373,4 @@ def server(
         print(eval_server.evaluate())
         del eval_server
         """
+

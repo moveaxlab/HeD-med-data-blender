@@ -113,55 +113,55 @@ def receive_weights_from_server(
 
 
 def send_weights_to_server(
-    client_socket: socket.socket,
+    server_host: str,
+    server_port: int,
     client_id: int,
     generator: torch.nn.Module,
     discriminator: torch.nn.Module,
 ) -> None:
     """
-    Sends local model weights to the federated server.
+    Invia i pesi locali del modello al server federato.
 
     Args:
-        client_socket (socket.socket): Connected socket.
-        client_id (int): Unique identifier for the client.
-        generator (torch.nn.Module): Local generator model.
-        discriminator (torch.nn.Module): Local discriminator model.
+        server_host (str): Indirizzo host del server.
+        server_port (int): Porta del server per ricevere i pesi.
+        client_id (int): Identificatore univoco del client.
+        generator (torch.nn.Module): Modello generatore locale.
+        discriminator (torch.nn.Module): Modello discriminatore locale.
 
     Returns:
         None
     """
     try:
-        # Pack model weights
-        weights = {
-            "generator_weights": generator.state_dict(),
-            "discriminator_weights": discriminator.state_dict(),
-        }
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect((server_host, server_port))
+            logging.info(f"Client {client_id}: connesso al server {server_host}:{server_port}")
 
-        payload = pickle.dumps({"client_id": client_id, "weights": weights})
-        compressed_payload = lz4.frame.compress(payload)
+            weights = {
+                "generator_weights": generator.state_dict(),
+                "discriminator_weights": discriminator.state_dict(),
+            }
 
-        # Send size first
-        client_socket.sendall(len(compressed_payload).to_bytes(8, "big"))
+            payload = pickle.dumps({"client_id": client_id, "weights": weights})
+            compressed_payload = lz4.frame.compress(payload)
 
-        # Send payload in chunks
-        sent_bytes = 0
-        for i in range(0, len(compressed_payload), CHUNK_SIZE):
-            chunk = compressed_payload[i : i + CHUNK_SIZE]
-            client_socket.sendall(chunk)
-            sent_bytes += len(chunk)
-            logging.info(
-                f"Client {client_id}: sent {sent_bytes}/{len(compressed_payload)} bytes "
-                f"({(sent_bytes / len(compressed_payload)) * 100:.2f}%)"
-            )
+            client_socket.sendall(len(compressed_payload).to_bytes(8, "big"))
 
-        logging.info(
-            f"Client {client_id}: weights sent to server ({len(compressed_payload)} bytes)."
-        )
+            sent_bytes = 0
+            for i in range(0, len(compressed_payload), CHUNK_SIZE):
+                chunk = compressed_payload[i : i + CHUNK_SIZE]
+                client_socket.sendall(chunk)
+                sent_bytes += len(chunk)
+                logging.info(
+                    f"Client {client_id}: inviati {sent_bytes}/{len(compressed_payload)} byte "
+                    f"({(sent_bytes / len(compressed_payload)) * 100:.2f}%)"
+                )
+
+            logging.info(f"Client {client_id}: pesi inviati al server con successo.")
 
     except Exception as e:
-        logging.error(f"Error sending weights to server: {e}")
-    finally:
-        client_socket.close()
+        logging.error(f"Client {client_id}: errore nell'invio dei pesi al server: {e}")
+
 
 
 # -------------------------
@@ -202,6 +202,7 @@ def train_over_runs(
     # Initial weights from server
     with create_socket_and_connect(host, send_port) as client_socket:
         weights = receive_weights_from_server(client_socket)
+
     generator.load_state_dict(weights["generator_weights"])
     discriminator.load_state_dict(weights["discriminator_weights"])
 
@@ -209,14 +210,14 @@ def train_over_runs(
     for round_num in range(NUM_ROUNDS):
         print(f"Client {client_id} - Round {round_num} started.")
 
+        print(f"start training Client {client_id}")
         # Train locally (to be implemented)
-        model.train_algorithm(train_loader)
+        # model.train_algorithm(train_loader)
 
         # Send updated weights
-        with create_socket_and_connect(host, receive_port) as client_socket_send:
-            send_weights_to_server(
-                client_socket_send, client_id, generator, discriminator
-            )
+        send_weights_to_server(
+            host, send_port, client_id, generator, discriminator
+        )
 
         # Receive aggregated weights
         with create_socket_and_connect(host, send_port) as client_socket_receive:
@@ -230,3 +231,4 @@ def train_over_runs(
         torch.cuda.empty_cache()
 
     print(f"Client {client_id} completed all {NUM_ROUNDS} training rounds.")
+
