@@ -70,7 +70,6 @@ class BaseModel(ABC):
                 )
             self.create_directory(self.base_dir)
 
-
     def create_directory(self, path: str, is_dir: bool = True) -> None:
         """
         Creates a path either locally or on S3, depending on self.use_s3.
@@ -115,7 +114,7 @@ class BaseModel(ABC):
             parsed = urlparse(save_path)
             bucket = parsed.netloc
             prefix = parsed.path.lstrip("/")
-            s3 = boto3.client("s3")
+            s3 = self.s3_client
 
             with tempfile.TemporaryDirectory() as tmp_dir:
                 zip_path = os.path.join(tmp_dir, "models.zip")
