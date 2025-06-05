@@ -11,6 +11,7 @@ from typing import Type
 from medDataBlender.models.evaluator import SyntheticDataEvaluator
 from medDataBlender.models import BaseModel
 from torch.utils.data import DataLoader
+from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging
 logging.basicConfig(
@@ -105,38 +106,43 @@ def send_weights_to_clients(
             thread.join()
 
 
-def receive_weights_from_client(
-    connection: socket.socket,
-    received_weights: dict,
-    lock: threading.Lock,
-) -> None:
-    """
-    Riceve i pesi del modello da un singolo client.
-
-    Args:
-        connection (socket.socket): Connessione socket del client.
-        received_weights (dict): Dizionario condiviso per memorizzare i pesi.
-        lock (threading.Lock): Lock per l'accesso thread-safe al dizionario.
-
-    Returns:
-        None
-    """
+def handle_client(
+    connection: socket.socket, received_weights: dict, lock: threading.Lock
+):
     try:
-        data_size_bytes = connection.recv(8)
-        if not data_size_bytes:
-            raise ConnectionError("Nessun dato ricevuto per la dimensione del payload.")
-        data_size = int.from_bytes(data_size_bytes, "big")
-        logging.info(f"Attesa di {data_size} byte da {connection.getpeername()}...")
+        connection.settimeout(10)
+        size_bytes = connection.recv(8)
+        if not size_bytes:
+            raise ConnectionError("No size bytes received")
+        total_size = int.from_bytes(size_bytes, "big")
+        logging.info(
+            f"Ricevuto dimensione payload: {total_size} byte da {connection.getpeername()}"
+        )
 
         data = b""
-        while len(data) < data_size:
-            packet = connection.recv(min(CHUNK_SIZE, data_size - len(data)))
-            if not packet:
-                raise ConnectionError("Connessione persa durante la ricezione dei dati.")
-            data += packet
+        received_len = 0
+        last_percent_reported = -1
 
-        decompressed_data = lz4.frame.decompress(data)
-        received_data = pickle.loads(decompressed_data)
+        while received_len < total_size:
+            chunk = connection.recv(min(CHUNK_SIZE, total_size - received_len))
+            if not chunk:
+                raise ConnectionError("Connection lost while receiving data")
+            data += chunk
+            received_len += len(chunk)
+
+            # Calcola percentuale
+            percent = int((received_len / total_size) * 100)
+            if percent != last_percent_reported and percent % 5 == 0:  # stampa ogni 5%
+                logging.info(
+                    f"Ricezione da {connection.getpeername()}: {percent}% completato"
+                )
+                last_percent_reported = percent
+
+            # invia ack chunk ricevuto (1 byte)
+            connection.sendall(b"\x01")
+
+        decompressed = lz4.frame.decompress(data)
+        received_data = pickle.loads(decompressed)
 
         client_id = received_data["client_id"]
         client_weights = received_data["weights"]
@@ -144,59 +150,36 @@ def receive_weights_from_client(
         with lock:
             received_weights[client_id] = client_weights
 
-        logging.info(f"Pesi ricevuti con successo dal client {client_id}.")
+        logging.info(f"Pesi ricevuti con successo dal client {client_id}")
 
     except Exception as e:
-        logging.error(f"Errore nella ricezione dei pesi: {e}")
+        logging.error(f"Errore nella ricezione da client: {e}")
 
     finally:
         connection.close()
 
 
-def accept_connections(server_socket, num_clients, connection_queue):
-    for _ in range(num_clients):
-        conn, addr = server_socket.accept()
-        logging.info(f"Connessione accettata da {addr}")
-        connection_queue.put(conn)
-
-
-
-def receive_weights_from_clients(
-    host: str,
-    receive_port: int,
-    num_clients: int
-) -> dict:
+def receive_weights_from_clients(host: str, port: int, num_clients: int) -> dict:
     received_weights = {}
-    connection_queue = queue.Queue()
     lock = threading.Lock()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.bind((host, receive_port))
+        server_socket.bind((host, port))
         server_socket.listen()
-        logging.info(f"Server in ascolto sulla porta {receive_port}...")
+        logging.info(f"Server in ascolto su {host}:{port}...")
 
-        # Thread per accettare connessioni
-        accept_thread = threading.Thread(
-            target=accept_connections,
-            args=(server_socket, num_clients, connection_queue),
-        )
-        accept_thread.start()
+        with ThreadPoolExecutor(max_workers=num_clients) as executor:
+            futures = []
+            for _ in range(num_clients):
+                conn, addr = server_socket.accept()
+                logging.info(f"Connessione accettata da {addr}")
+                futures.append(
+                    executor.submit(handle_client, conn, received_weights, lock)
+                )
 
-        # Thread per ricevere i pesi
-        threads = []
-        for _ in range(num_clients):
-            conn = connection_queue.get()
-            thread = threading.Thread(
-                target=receive_weights_from_client,
-                args=(conn, received_weights, lock),
-            )
-            thread.start()
-            threads.append(thread)
-
-        accept_thread.join()
-        for thread in threads:
-            thread.join()
+            for future in futures:
+                future.result()  # aspetta completamento thread
 
     return received_weights
 
@@ -337,9 +320,11 @@ def server(
         model.load_weights_from_path(weights_path)
 
     # Initial weights distribution
+    """
     send_weights_to_clients(
         host, send_port, model.generator_model, model.discriminator_model, num_clients
     )
+    """
 
     for j in range(num_rounds):
         print(f"\n STARTING ROUND {j}")

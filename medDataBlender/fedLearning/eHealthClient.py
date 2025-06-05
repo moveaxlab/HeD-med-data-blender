@@ -113,55 +113,63 @@ def receive_weights_from_server(
 
 
 def send_weights_to_server(
-    server_host: str,
-    server_port: int,
+    host: str,
+    port: int,
     client_id: int,
-    generator: torch.nn.Module,
-    discriminator: torch.nn.Module,
-) -> None:
-    """
-    Invia i pesi locali del modello al server federato.
+    generator,
+    discriminator,
+    max_retries: int = 12,
+    retry_delay: int = 5,
+):
+    weights = {
+        "client_id": client_id,
+        "weights": {
+            "generator": generator.state_dict(),
+            "discriminator": discriminator.state_dict(),
+        },
+    }
+    serialized = pickle.dumps(weights)
+    compressed = lz4.frame.compress(serialized)
+    total_size = len(compressed)
 
-    Args:
-        server_host (str): Indirizzo host del server.
-        server_port (int): Porta del server per ricevere i pesi.
-        client_id (int): Identificatore univoco del client.
-        generator (torch.nn.Module): Modello generatore locale.
-        discriminator (torch.nn.Module): Modello discriminatore locale.
-
-    Returns:
-        None
-    """
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            client_socket.connect((server_host, server_port))
-            logging.info(f"Client {client_id}: connesso al server {server_host}:{server_port}")
-
-            weights = {
-                "generator_weights": generator.state_dict(),
-                "discriminator_weights": discriminator.state_dict(),
-            }
-
-            payload = pickle.dumps({"client_id": client_id, "weights": weights})
-            compressed_payload = lz4.frame.compress(payload)
-
-            client_socket.sendall(len(compressed_payload).to_bytes(8, "big"))
-
-            sent_bytes = 0
-            for i in range(0, len(compressed_payload), CHUNK_SIZE):
-                chunk = compressed_payload[i : i + CHUNK_SIZE]
-                client_socket.sendall(chunk)
-                sent_bytes += len(chunk)
+    for attempt in range(1, max_retries + 1):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(10)
+                sock.connect((host, port))
                 logging.info(
-                    f"Client {client_id}: inviati {sent_bytes}/{len(compressed_payload)} byte "
-                    f"({(sent_bytes / len(compressed_payload)) * 100:.2f}%)"
+                    f"[Client {client_id}] Connessione stabilita al server {host}:{port}"
                 )
 
-            logging.info(f"Client {client_id}: pesi inviati al server con successo.")
+                sock.sendall(total_size.to_bytes(8, "big"))
 
-    except Exception as e:
-        logging.error(f"Client {client_id}: errore nell'invio dei pesi al server: {e}")
+                sent = 0
+                while sent < total_size:
+                    chunk = compressed[sent : sent + CHUNK_SIZE]
+                    sock.sendall(chunk)
+                    ack = sock.recv(1)
+                    if ack != b"\x01":
+                        raise ConnectionError(
+                            f"[Client {client_id}] ACK non ricevuto o errato"
+                        )
+                    sent += len(chunk)
 
+                logging.info(
+                    f"[Client {client_id}] Pesi inviati con successo ({total_size} byte)"
+                )
+                return
+
+        except Exception as e:
+            logging.warning(
+                f"[Client {client_id}] su porta {port} Tentativo {attempt}/{max_retries} fallito: {e}"
+            )
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+            else:
+                logging.error(
+                    f"[Client {client_id}] Falliti tutti i tentativi di invio. Errore finale: {e}"
+                )
+                raise
 
 
 # -------------------------
@@ -200,11 +208,11 @@ def train_over_runs(
     discriminator = model.discriminator_model.to(device)
 
     # Initial weights from server
-    with create_socket_and_connect(host, send_port) as client_socket:
-        weights = receive_weights_from_server(client_socket)
+    # with create_socket_and_connect(host, send_port) as client_socket:
+    # weights = receive_weights_from_server(client_socket)
 
-    generator.load_state_dict(weights["generator_weights"])
-    discriminator.load_state_dict(weights["discriminator_weights"])
+    # generator.load_state_dict(weights["generator_weights"])
+    # discriminator.load_state_dict(weights["discriminator_weights"])
 
     # Start federated learning rounds
     for round_num in range(NUM_ROUNDS):
@@ -215,9 +223,7 @@ def train_over_runs(
         # model.train_algorithm(train_loader)
 
         # Send updated weights
-        send_weights_to_server(
-            host, send_port, client_id, generator, discriminator
-        )
+        send_weights_to_server(host, receive_port, client_id, generator, discriminator)
 
         # Receive aggregated weights
         with create_socket_and_connect(host, send_port) as client_socket_receive:
