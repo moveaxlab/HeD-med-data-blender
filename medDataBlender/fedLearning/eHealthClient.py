@@ -124,8 +124,8 @@ def send_weights_to_server(
     weights = {
         "client_id": client_id,
         "weights": {
-            "generator": generator.state_dict(),
-            "discriminator": discriminator.state_dict(),
+            "generator_weights": generator.state_dict(),
+            "discriminator_weights": discriminator.state_dict(),
         },
     }
     serialized = pickle.dumps(weights)
